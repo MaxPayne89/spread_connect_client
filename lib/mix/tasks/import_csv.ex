@@ -24,6 +24,7 @@ defmodule Mix.Tasks.Import.Csv do
         IO.puts("Successfully read file with #{byte_size(content)} bytes")
         parsed_data = CsvParser.parse_file(file_path)
         IO.inspect(parsed_data)
+
       {:error, reason} ->
         IO.puts("Error reading file: #{reason}")
     end

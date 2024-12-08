@@ -5,7 +5,7 @@ defmodule SpreadConnectClient.Client.SpreadConnectClient do
   alias Req
 
   @access_token "e26b5dad-44b4-4d31-8f58-30b4118b943b"
-  
+
   @doc """
   Creates an order in SpreadConnect.
 

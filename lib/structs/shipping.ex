@@ -8,8 +8,8 @@ defmodule SpreadConnectClient.Structs.Shipping do
   defstruct [:address, :customer_price, :preferred_type]
 
   @type t :: %__MODULE__{
-    address: Address.t(),
-    customer_price: Price.t(),
-    preferred_type: String.t()
-  }
+          address: Address.t(),
+          customer_price: Price.t(),
+          preferred_type: String.t()
+        }
 end

@@ -6,7 +6,7 @@ defmodule SpreadConnectClient.Structs.Price do
   defstruct [:amount, :currency]
 
   @type t :: %__MODULE__{
-    amount: float(),
-    currency: String.t()
-  }
+          amount: float(),
+          currency: String.t()
+        }
 end

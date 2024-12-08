@@ -15,12 +15,53 @@ defmodule SpreadConnectClient.Parser.CsvParser do
     |> Enum.to_list()
   end
 
-  defp parse_row([order_number, _, _, _, _total_order_quantity, email, _, _, _, _, sku, qty, _, price,
-    _, _, _, _, _, recipient_name, recipient_phone, recipient_company_name, delivery_country, _, delivery_state_name, delivery_city,
-    delivery_address, delivery_postal_code, billing_name, _billing_phone, billing_company,
-    billing_country, _, billing_state_name, billing_city, billing_address, billing_postal_code,
-    _, _, _, _, _, _, _total, currency | _]) do
-
+  defp parse_row([
+         order_number,
+         _,
+         _,
+         _,
+         _total_order_quantity,
+         email,
+         _,
+         _,
+         _,
+         _,
+         sku,
+         qty,
+         _,
+         price,
+         _,
+         _,
+         _,
+         _,
+         _,
+         recipient_name,
+         recipient_phone,
+         recipient_company_name,
+         delivery_country,
+         _,
+         delivery_state_name,
+         delivery_city,
+         delivery_address,
+         delivery_postal_code,
+         billing_name,
+         _billing_phone,
+         billing_company,
+         billing_country,
+         _,
+         billing_state_name,
+         billing_city,
+         billing_address,
+         billing_postal_code,
+         _,
+         _,
+         _,
+         _,
+         _,
+         _,
+         _total,
+         currency | _
+       ]) do
     %{
       order_item: %{
         sku: sku,
@@ -83,6 +124,7 @@ defmodule SpreadConnectClient.Parser.CsvParser do
     |> String.replace("\"", "")
     |> String.trim()
   end
+
   defp clean_string(value), do: value
 
   defp parse_integer(value) when is_binary(value) do
