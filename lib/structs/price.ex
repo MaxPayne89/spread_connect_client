@@ -3,6 +3,7 @@ defmodule SpreadConnectClient.Structs.Price do
   Represents a price with amount and currency
   """
 
+  @derive Jason.Encoder
   defstruct [:amount, :currency]
 
   @type t :: %__MODULE__{
