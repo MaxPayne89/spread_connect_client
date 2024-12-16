@@ -13,7 +13,7 @@ defmodule Mix.Tasks.Import.Csv do
   """
 
   @shortdoc "Import CSV data to SpreadConnect"
-  def run(file_path, base_url) do
+  def run(file_path, base_url \\ "https://api.spreadconnect.app") do
     IO.puts("Starting import of #{file_path}")
     Application.ensure_all_started(:req)
 
@@ -49,7 +49,7 @@ defmodule Mix.Tasks.Import.Csv do
     end
   end
 
-  def run(_) do
-    IO.puts("Usage: mix import.csv path/to/file.csv")
-  end
+  # def run(_, _) do
+  #   IO.puts("Usage: mix import.csv path/to/file.csv")
+  # end
 end

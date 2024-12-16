@@ -32,11 +32,20 @@ defmodule SpreadConnectClient.Client.SpreadConnectClient do
       {:ok, %Req.Response{status: status, body: body}} when status in 100..399 ->
         {:ok, %{status: status, body: Jason.decode!(body)}}
 
+      {:ok, %Req.Response{status: 401}} ->
+        {:error, %{status: 401, body: %{"error" => "Unauthorized access"}}}
+
       {:ok, %Req.Response{status: status, body: body}} ->
-        {:error, %{status: status, body: Jason.decode!(body)}}
+        decoded_body =
+          case Jason.decode(body) do
+            {:ok, decoded} -> decoded
+            {:error, _} -> %{"error" => "Invalid response format"}
+          end
+
+        {:error, %{status: status, body: decoded_body}}
 
       {:error, exception} ->
-        {:error, exception}
+        {:error, %{status: 500, body: %{"error" => Exception.message(exception)}}}
     end
   end
 end
