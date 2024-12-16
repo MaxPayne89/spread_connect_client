@@ -4,7 +4,6 @@ defmodule SpreadConnectClient.Parser.CsvParser do
   """
 
   alias NimbleCSV.RFC4180, as: CSV
-  alias SpreadConnectClient.Structs.Price
 
   @spec parse_file(String.t()) :: [map()]
   def parse_file(file_path) do
@@ -72,7 +71,7 @@ defmodule SpreadConnectClient.Parser.CsvParser do
          sku: sku,
          external_order_item_reference: order_number,
          quantity: parse_integer(qty),
-         customer_price: %Price{
+         customer_price: %{
            amount: parse_float(price),
            currency: currency
          }
@@ -90,7 +89,7 @@ defmodule SpreadConnectClient.Parser.CsvParser do
            street: delivery_address,
            zip_code: delivery_postal_code
          },
-         customer_price: %Price{
+         customer_price: %{
            amount: parse_float(price),
            currency: currency
          }

@@ -1,7 +1,6 @@
 defmodule SpreadConnectClient.Parser.CsvParserTest do
   use ExUnit.Case, async: true
   alias SpreadConnectClient.Parser.CsvParser
-  alias SpreadConnectClient.Structs.Price
 
   @fixtures_path "test/fixtures"
 
@@ -21,7 +20,7 @@ defmodule SpreadConnectClient.Parser.CsvParserTest do
       [order_item] = result.order_items
       assert order_item.sku == "6739BC863E137_7907"
       assert order_item.quantity == 1
-      assert %Price{amount: 18.98, currency: "EUR"} = order_item.customer_price
+      assert %{amount: 18.98, currency: "EUR"} = order_item.customer_price
 
       # Verify shipping address
       assert result.shipping.preferred_type == "STANDARD"

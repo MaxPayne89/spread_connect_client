@@ -17,9 +17,9 @@ defmodule SpreadConnectClient.Integration.CsvImportTest do
         order_data = Jason.decode!(body)
 
         # Verify the parsed data structure
-        assert order_data["external_order_reference"] == "10001"
+        assert order_data["externalOrderReference"] == "10001"
         assert order_data["currency"] == "EUR"
-        assert [order_item | _] = order_data["order_items"]
+        assert [order_item | _] = order_data["orderItems"]
         assert order_item["sku"] == "6739BC863E137_7907"
 
         # Verify headers
