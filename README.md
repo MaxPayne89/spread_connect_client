@@ -2,6 +2,56 @@
 
 A client library for importing CSV order data and submitting it to the SpreadConnect API. This library provides a convenient mix task for processing CSV files containing order information.
 
+## Prerequisites
+
+### Installing asdf Version Manager
+
+1. Install asdf:
+
+* macOS (with Homebrew):
+```bash
+brew install asdf
+```
+
+Add to your shell configuration file (~/.bashrc, ~/.zshrc, etc.):
+```bash
+. "$HOME/.asdf/asdf.sh"
+. "$HOME/.asdf/completions/asdf.bash"
+```
+
+* Windows:
+```powershell
+# 1. Install Chocolatey if not already installed
+# Run in PowerShell as Administrator:
+Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+
+# 2. Install Git for Windows if not already installed
+choco install git
+
+# 3. Install asdf-vm
+git clone https://github.com/asdf-vm/asdf.git ~\.asdf --branch v0.13.1
+```
+
+Add to your PowerShell profile (~\Documents\PowerShell\Microsoft.PowerShell_profile.ps1):
+```powershell
+$env:ASDF_DIR = "$env:USERPROFILE\.asdf"
+. "$env:ASDF_DIR\asdf.ps1"
+```
+
+### Installing Erlang and Elixir
+
+1. Add required plugins:
+```bash
+asdf plugin add erlang
+asdf plugin add elixir
+```
+
+2. Install Erlang and Elixir:
+In the root of the project directory, run:
+```bash
+asdf install
+```
+
 ## Usage
 
 ### CSV Import Task
