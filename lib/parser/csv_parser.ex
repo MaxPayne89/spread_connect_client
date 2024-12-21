@@ -5,6 +5,8 @@ defmodule SpreadConnectClient.Parser.CsvParser do
 
   alias NimbleCSV.RFC4180, as: CSV
 
+  @spread_connect_fulfillment_service "Spreadconnect"
+
   @spec parse_file(String.t()) :: [map()]
   def parse_file(file_path) do
     file_path
@@ -12,59 +14,71 @@ defmodule SpreadConnectClient.Parser.CsvParser do
     |> CSV.parse_stream(skip_headers: true)
     |> Stream.map(&parse_row/1)
     |> Stream.filter(&match?({:ok, _}, &1))
+    |> Stream.filter(fn {:ok, data} ->
+      data.fulfillment_service == @spread_connect_fulfillment_service
+    end)
     |> Stream.map(fn {:ok, data} -> data end)
     |> Stream.map(&clean_values/1)
     |> Enum.reduce(%{}, &group_by_order_number/2)
     |> Map.values()
   end
 
-  defp parse_row([
-         order_number,
-         _,
-         _,
-         _,
-         _total_order_quantity,
-         email,
-         _,
-         _,
-         _,
-         _,
-         sku,
-         qty,
-         _,
-         price,
-         _,
-         _,
-         _,
-         _,
-         _,
-         recipient_name,
-         recipient_phone,
-         recipient_company_name,
-         delivery_country,
-         delivery_state,
-         _delivery_state_name,
-         delivery_city,
-         delivery_address,
-         delivery_postal_code,
-         billing_name,
-         _billing_phone,
-         billing_company,
-         billing_country,
-         billing_state,
-         _billing_state_name,
-         billing_city,
-         billing_address,
-         billing_postal_code,
-         _,
-         _,
-         _,
-         _,
-         _,
-         _,
-         _total,
-         currency | _
-       ]) do
+  defp parse_row(
+         [
+           order_number,
+           _,
+           _,
+           _,
+           _total_order_quantity,
+           email,
+           _,
+           _,
+           _,
+           _,
+           sku,
+           qty,
+           _,
+           price,
+           _,
+           _,
+           _,
+           _,
+           _,
+           recipient_name,
+           recipient_phone,
+           recipient_company_name,
+           delivery_country,
+           delivery_state,
+           _delivery_state_name,
+           delivery_city,
+           delivery_address,
+           delivery_postal_code,
+           billing_name,
+           _billing_phone,
+           billing_company,
+           billing_country,
+           billing_state,
+           _billing_state_name,
+           billing_city,
+           billing_address,
+           billing_postal_code,
+           _,
+           _,
+           _,
+           _,
+           _,
+           _,
+           _total,
+           currency,
+           _refunded_amount,
+           _net_amount,
+           _additional_fees,
+           _fulfillment_status,
+           _tracking_number,
+           fulfillment_service,
+           _shipping_label | _
+         ] = row
+       ) do
     {:ok,
      %{
        order_item: %{
@@ -106,7 +120,8 @@ defmodule SpreadConnectClient.Parser.CsvParser do
        },
        external_order_reference: order_number,
        currency: currency,
-       email: email
+       email: email,
+       fulfillment_service: fulfillment_service
      }}
   end
 
@@ -202,7 +217,8 @@ defmodule SpreadConnectClient.Parser.CsvParser do
           billing_address: row.billing_address,
           external_order_reference: order_number,
           currency: row.currency,
-          email: row.email
+          email: row.email,
+          fulfillment_service: row.fulfillment_service
         })
 
       existing_order ->

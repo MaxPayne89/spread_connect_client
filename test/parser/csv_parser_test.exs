@@ -62,5 +62,13 @@ defmodule SpreadConnectClient.Parser.CsvParserTest do
 
       assert result == []
     end
+
+    test "filters out rows with invalid fulfillment service" do
+      result =
+        Path.join(@fixtures_path, "test_orders_4.csv")
+        |> CsvParser.parse_file()
+
+      assert length(result) == 1
+    end
   end
 end
