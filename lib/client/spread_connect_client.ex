@@ -4,8 +4,8 @@ defmodule SpreadConnectClient.Client.SpreadConnectClient do
   """
   alias SpreadConnectClient.Client.JsonKeys
 
-  # @access_token "e26b5dad-44b4-4d31-8f58-30b4118b943b"
-  @access_token "e26b5dad-44b4-4d31-8f58-30b4118b943c"
+  @access_token "e26b5dad-44b4-4d31-8f58-30b4118b943b"
+  # @access_token "e26b5dad-44b4-4d31-8f58-30b4118b943c"
 
   @default_url "https://api.spreadconnect.app"
 
