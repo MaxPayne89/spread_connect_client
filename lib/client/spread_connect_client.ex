@@ -30,14 +30,14 @@ defmodule SpreadConnectClient.Client.SpreadConnectClient do
            json: camelized_order_data
          ) do
       {:ok, %Req.Response{status: status, body: body}} when status in 100..399 ->
-        {:ok, %{status: status, body: Jason.decode!(body)}}
+        {:ok, %{status: status, body: JSON.decode!(body)}}
 
       {:ok, %Req.Response{status: 401}} ->
         {:error, %{status: 401, body: %{"error" => "Unauthorized access"}}}
 
       {:ok, %Req.Response{status: status, body: body}} ->
         decoded_body =
-          case Jason.decode(body) do
+          case JSON.decode(body) do
             {:ok, decoded} -> decoded
             {:error, _} -> %{"error" => "Invalid response format"}
           end

@@ -14,7 +14,7 @@ defmodule SpreadConnectClient.Integration.CsvImportTest do
       # Setup mock API endpoint
       Bypass.expect_once(bypass, "POST", "/orders", fn conn ->
         {:ok, body, conn} = Plug.Conn.read_body(conn)
-        order_data = Jason.decode!(body)
+        order_data = JSON.decode!(body)
 
         # Verify the parsed data structure
         assert order_data["externalOrderReference"] == "10001"
@@ -46,7 +46,7 @@ defmodule SpreadConnectClient.Integration.CsvImportTest do
       # Setup mock API endpoint
       Bypass.expect(bypass, "POST", "/orders", fn conn ->
         {:ok, body, conn} = Plug.Conn.read_body(conn)
-        order_data = Jason.decode!(body)
+        order_data = JSON.decode!(body)
 
         order_reference = order_data["external_order_reference"]
 
