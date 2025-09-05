@@ -77,7 +77,7 @@ defmodule SpreadConnectClient.Parser.CsvParser do
            _tracking_number,
            fulfillment_service,
            _shipping_label | _
-         ] = row
+         ]
        ) do
     {:ok,
      %{

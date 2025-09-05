@@ -4,10 +4,6 @@ defmodule SpreadConnectClient.Client.SpreadConnectClient do
   """
   alias SpreadConnectClient.Client.JsonKeys
 
-  @access_token "e26b5dad-44b4-4d31-8f58-30b4118b943b"
-  # @access_token "e26b5dad-44b4-4d31-8f58-30b4118b943c"
-
-  @default_url "https://api.spreadconnect.app"
 
   @doc """
   Creates an order in SpreadConnect.
@@ -20,13 +16,15 @@ defmodule SpreadConnectClient.Client.SpreadConnectClient do
     * `{:ok, response}` on successful creation
     * `{:error, response}` on failure
   """
-  @spec create_order(map(), String.t()) :: {:ok, map()} | {:error, map()}
-  def create_order(order_data, base_url \\ @default_url) do
+  @spec create_order(map(), String.t() | nil) :: {:ok, map()} | {:error, map()}
+  def create_order(order_data, base_url \\ nil) do
+    base_url = base_url || Application.get_env(:spread_connect_client, :base_url)
+    access_token = Application.get_env(:spread_connect_client, :access_token)
     url = "#{base_url}/orders"
     camelized_order_data = JsonKeys.camelize(order_data)
 
     case Req.post(url,
-           headers: [{"X-SPOD-ACCESS-TOKEN", @access_token}],
+           headers: [{"X-SPOD-ACCESS-TOKEN", access_token}],
            json: camelized_order_data
          ) do
       {:ok, %Req.Response{status: status, body: body}} when status in 100..399 ->
