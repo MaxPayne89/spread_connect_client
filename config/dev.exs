@@ -1,5 +1,8 @@
 import Config
 
-config :spread_connect_client,
-  base_url: "https://api.spreadconnect.app",
-  access_token: System.get_env("SPREAD_CONNECT_ACCESS_TOKEN") || raise "Missing SPREAD_CONNECT_ACCESS_TOKEN"
+# Development environment configuration
+# Sensitive values (API keys) are configured in config/runtime.exs
+# using environment variables to keep them secure.
+
+# Note: API credentials and base URL are now loaded from environment
+# variables in config/runtime.exs. See CLAUDE.md for setup instructions.
