@@ -1,152 +1,177 @@
 defmodule SpreadConnectClient.Parser.CsvParser do
   @moduledoc """
-  Handles CSV file parsing for SpreadConnect data imports.
+  CSV file parser for SpreadConnect order data imports.
+  
+  Handles parsing, filtering, cleaning, and grouping of CSV order data
+  to prepare it for API submission to SpreadConnect.
   """
 
   alias NimbleCSV.RFC4180, as: CSV
 
+  # Constants
   @spread_connect_fulfillment_service "Spreadconnect"
+  @default_shipping_type "STANDARD"
+  @country_code_length 2
+  @state_code_length 2
+  @german_phone_prefix "+49"
 
+  # CSV column positions (for documentation and maintainability)
+  @csv_columns %{
+    order_number: 0,
+    email: 5,
+    sku: 10,
+    quantity: 11,
+    price: 13,
+    recipient_name: 19,
+    recipient_phone: 20,
+    recipient_company: 21,
+    delivery_country: 22,
+    delivery_state: 23,
+    delivery_city: 25,
+    delivery_address: 26,
+    delivery_postal_code: 27,
+    billing_name: 28,
+    billing_company: 30,
+    billing_country: 31,
+    billing_state: 32,
+    billing_city: 34,
+    billing_address: 35,
+    billing_postal_code: 36,
+    currency: 44,
+    fulfillment_service: 50
+  }
+
+  @doc """
+  Parses a CSV file and returns a list of order maps ready for API submission.
+  
+  Only processes orders with 'Spreadconnect' fulfillment service.
+  Groups multiple line items by order number into consolidated orders.
+  """
   @spec parse_file(String.t()) :: [map()]
   def parse_file(file_path) do
     file_path
     |> File.stream!()
     |> CSV.parse_stream(skip_headers: true)
-    |> Stream.map(&parse_row/1)
-    |> Stream.filter(&match?({:ok, _}, &1))
-    |> Stream.filter(fn {:ok, data} ->
-      data.fulfillment_service == @spread_connect_fulfillment_service
-    end)
-    |> Stream.map(fn {:ok, data} -> data end)
-    |> Stream.map(&clean_values/1)
+    |> Stream.map(&parse_csv_row/1)
+    |> Stream.filter(&filter_valid_rows/1)
+    |> Stream.filter(&filter_spread_connect_orders/1)
+    |> Stream.map(&extract_order_data/1)
+    |> Stream.map(&clean_order_values/1)
     |> Enum.reduce(%{}, &group_by_order_number/2)
     |> Map.values()
   end
 
-  defp parse_row(
-         [
-           order_number,
-           _,
-           _,
-           _,
-           _total_order_quantity,
-           email,
-           _,
-           _,
-           _,
-           _,
-           sku,
-           qty,
-           _,
-           price,
-           _,
-           _,
-           _,
-           _,
-           _,
-           recipient_name,
-           recipient_phone,
-           recipient_company_name,
-           delivery_country,
-           delivery_state,
-           _delivery_state_name,
-           delivery_city,
-           delivery_address,
-           delivery_postal_code,
-           billing_name,
-           _billing_phone,
-           billing_company,
-           billing_country,
-           billing_state,
-           _billing_state_name,
-           billing_city,
-           billing_address,
-           billing_postal_code,
-           _,
-           _,
-           _,
-           _,
-           _,
-           _,
-           _total,
-           currency,
-           _refunded_amount,
-           _net_amount,
-           _additional_fees,
-           _fulfillment_status,
-           _tracking_number,
-           fulfillment_service,
-           _shipping_label | _
-         ]
-       ) do
-    {:ok,
-     %{
-       order_item: %{
-         sku: sku,
-         external_order_item_reference: order_number,
-         quantity: parse_integer(qty),
-         customer_price: %{
-           amount: parse_float(price),
-           currency: currency
-         }
-       },
-       phone: parse_phone(recipient_phone),
-       shipping: %{
-         preferred_type: "STANDARD",
-         address: %{
-           first_name: parse_first_name(recipient_name),
-           last_name: parse_last_name(recipient_name),
-           company: recipient_company_name,
-           country: parse_country(delivery_country),
-           state: parse_state(delivery_state),
-           city: parse_city(delivery_city),
-           street: delivery_address,
-           zip_code: delivery_postal_code
-         },
-         customer_price: %{
-           amount: parse_float(price),
-           currency: currency
-         }
-       },
-       billing_address: %{
-         first_name: parse_first_name(billing_name),
-         last_name: parse_last_name(billing_name),
-         company: billing_company,
-         country: parse_country(billing_country),
-         state: parse_state(billing_state),
-         city: parse_city(billing_city),
-         street: billing_address,
-         zip_code: billing_postal_code
-       },
-       external_order_reference: order_number,
-       currency: currency,
-       email: email,
-       fulfillment_service: fulfillment_service
-     }}
+  # CSV Row Parsing
+
+  defp parse_csv_row(row) when length(row) >= 51 do
+    {:ok, build_order_from_csv_row(row)}
+  rescue
+    _ -> {:error, "Failed to parse CSV row"}
   end
 
-  defp parse_row(invalid_row) do
-    {:error, "Invalid row format: #{inspect(invalid_row)}"}
+  defp parse_csv_row(invalid_row) do
+    {:error, "Invalid CSV row format: expected at least 51 columns, got #{length(invalid_row)}"}
   end
 
-  defp clean_values(%{} = map) do
-    map
-    |> Map.update!(:billing_address, &clean_map_values/1)
-    |> update_in([:shipping, :address], &clean_map_values/1)
-    |> Map.update!(:phone, &clean_string/1)
+  defp build_order_from_csv_row(row) do
+    %{
+      order_item: build_order_item(row),
+      phone: parse_phone_number(Enum.at(row, @csv_columns.recipient_phone)),
+      shipping: build_shipping_info(row),
+      billing_address: build_billing_address(row),
+      external_order_reference: Enum.at(row, @csv_columns.order_number),
+      currency: Enum.at(row, @csv_columns.currency),
+      email: Enum.at(row, @csv_columns.email),
+      fulfillment_service: Enum.at(row, @csv_columns.fulfillment_service)
+    }
   end
 
-  defp clean_map_values(%{} = map) do
-    Map.new(map, fn {k, v} -> {k, clean_string(v)} end)
+  defp build_order_item(row) do
+    %{
+      sku: Enum.at(row, @csv_columns.sku),
+      external_order_item_reference: Enum.at(row, @csv_columns.order_number),
+      quantity: parse_integer(Enum.at(row, @csv_columns.quantity)),
+      customer_price: %{
+        amount: parse_float(Enum.at(row, @csv_columns.price)),
+        currency: Enum.at(row, @csv_columns.currency)
+      }
+    }
   end
 
-  defp clean_string(value) when is_binary(value) do
+  defp build_shipping_info(row) do
+    %{
+      preferred_type: @default_shipping_type,
+      address: build_shipping_address(row),
+      customer_price: %{
+        amount: parse_float(Enum.at(row, @csv_columns.price)),
+        currency: Enum.at(row, @csv_columns.currency)
+      }
+    }
+  end
+
+  defp build_shipping_address(row) do
+    recipient_name = Enum.at(row, @csv_columns.recipient_name)
+    
+    %{
+      first_name: extract_first_name(recipient_name),
+      last_name: extract_last_name(recipient_name),
+      company: Enum.at(row, @csv_columns.recipient_company),
+      country: normalize_country_code(Enum.at(row, @csv_columns.delivery_country)),
+      state: normalize_state_code(Enum.at(row, @csv_columns.delivery_state)),
+      city: clean_city_name(Enum.at(row, @csv_columns.delivery_city)),
+      street: Enum.at(row, @csv_columns.delivery_address),
+      zip_code: Enum.at(row, @csv_columns.delivery_postal_code)
+    }
+  end
+
+  defp build_billing_address(row) do
+    billing_name = Enum.at(row, @csv_columns.billing_name)
+    
+    %{
+      first_name: extract_first_name(billing_name),
+      last_name: extract_last_name(billing_name),
+      company: Enum.at(row, @csv_columns.billing_company),
+      country: normalize_country_code(Enum.at(row, @csv_columns.billing_country)),
+      state: normalize_state_code(Enum.at(row, @csv_columns.billing_state)),
+      city: clean_city_name(Enum.at(row, @csv_columns.billing_city)),
+      street: Enum.at(row, @csv_columns.billing_address),
+      zip_code: Enum.at(row, @csv_columns.billing_postal_code)
+    }
+  end
+
+  # Filtering Functions
+
+  defp filter_valid_rows({:ok, _}), do: true
+  defp filter_valid_rows({:error, _}), do: false
+
+  defp filter_spread_connect_orders({:ok, order_data}) do
+    order_data.fulfillment_service == @spread_connect_fulfillment_service
+  end
+
+  defp extract_order_data({:ok, order_data}), do: order_data
+
+  # Data Cleaning Functions
+
+  defp clean_order_values(order) do
+    order
+    |> Map.update!(:billing_address, &clean_address_fields/1)
+    |> update_in([:shipping, :address], &clean_address_fields/1)
+    |> Map.update!(:phone, &clean_string_value/1)
+  end
+
+  defp clean_address_fields(address) do
+    Map.new(address, fn {key, value} -> {key, clean_string_value(value)} end)
+  end
+
+  defp clean_string_value(value) when is_binary(value) do
     value
     |> String.replace("\"", "")
     |> String.trim()
   end
 
-  defp clean_string(value), do: value
+  defp clean_string_value(value), do: value
+
+  # Value Parsing Functions
 
   defp parse_integer(value) when is_binary(value) do
     case Integer.parse(value) do
@@ -155,6 +180,8 @@ defmodule SpreadConnectClient.Parser.CsvParser do
     end
   end
 
+  defp parse_integer(_), do: 0
+
   defp parse_float(value) when is_binary(value) do
     case Float.parse(value) do
       {number, _} -> number
@@ -162,80 +189,97 @@ defmodule SpreadConnectClient.Parser.CsvParser do
     end
   end
 
-  defp parse_first_name(value) when is_binary(value) do
-    value
-    |> String.replace("\"", "")
-    |> String.trim()
+  defp parse_float(_), do: 0.0
+
+  # Name Parsing Functions
+
+  defp extract_first_name(full_name) when is_binary(full_name) do
+    full_name
+    |> clean_string_value()
     |> String.split()
     |> List.first()
   end
 
-  defp parse_first_name(value), do: value
+  defp extract_first_name(_), do: nil
 
-  defp parse_last_name(value) when is_binary(value) do
-    value
-    |> String.replace("\"", "")
-    |> String.trim()
+  defp extract_last_name(full_name) when is_binary(full_name) do
+    full_name
+    |> clean_string_value()
     |> String.split()
     |> List.last()
   end
 
-  defp parse_last_name(value), do: value
+  defp extract_last_name(_), do: nil
 
-  defp parse_country(value) when is_binary(value) do
-    value
-    |> String.slice(0..1)
+  # Address Field Normalization
+
+  defp normalize_country_code(country) when is_binary(country) do
+    String.slice(country, 0, @country_code_length)
   end
 
-  defp parse_country(value), do: value
+  defp normalize_country_code(country), do: country
 
-  defp parse_city(value) when is_binary(value) do
-    value
+  defp normalize_state_code(state) when is_binary(state) do
+    String.slice(state, -@state_code_length, @state_code_length)
+  end
+
+  defp normalize_state_code(state), do: state
+
+  defp clean_city_name(city) when is_binary(city) do
+    city
     |> String.trim()
     |> String.replace(~r/[^a-zA-Z].*$/, "")
   end
 
-  defp parse_city(value), do: value
+  defp clean_city_name(city), do: city
 
-  defp parse_state(value) when is_binary(value) do
-    value
-    |> String.slice(-2..-1)
+  # Phone Number Processing
+
+  defp parse_phone_number(phone) when is_binary(phone) do
+    phone
+    |> clean_string_value()
+    |> convert_german_phone_format()
   end
 
-  defp parse_state(value), do: value
+  defp parse_phone_number(phone), do: phone
 
-  defp group_by_order_number(row, acc) do
-    order_number = row.external_order_reference
+  defp convert_german_phone_format(phone) do
+    String.replace(phone, ~r/^0/, @german_phone_prefix)
+  end
 
-    case Map.get(acc, order_number) do
+  # Order Grouping Functions
+
+  defp group_by_order_number(order_row, orders_acc) do
+    order_number = order_row.external_order_reference
+
+    case Map.get(orders_acc, order_number) do
       nil ->
-        # First occurrence of this order number
-        Map.put(acc, order_number, %{
-          order_items: [row.order_item],
-          phone: row.phone,
-          shipping: row.shipping,
-          billing_address: row.billing_address,
-          external_order_reference: order_number,
-          currency: row.currency,
-          email: row.email,
-          fulfillment_service: row.fulfillment_service
-        })
+        create_new_order_entry(orders_acc, order_number, order_row)
 
       existing_order ->
-        # Add the order item to existing order
-        Map.put(acc, order_number, %{
-          existing_order
-          | order_items: [row.order_item | existing_order.order_items]
-        })
+        add_item_to_existing_order(orders_acc, order_number, existing_order, order_row)
     end
   end
 
-  defp parse_phone(value) when is_binary(value) do
-    value
-    |> String.trim()
-    |> String.replace("\"", "")
-    |> String.replace(~r/^0/, "+49")
+  defp create_new_order_entry(orders_acc, order_number, order_row) do
+    Map.put(orders_acc, order_number, %{
+      order_items: [order_row.order_item],
+      phone: order_row.phone,
+      shipping: order_row.shipping,
+      billing_address: order_row.billing_address,
+      external_order_reference: order_number,
+      currency: order_row.currency,
+      email: order_row.email,
+      fulfillment_service: order_row.fulfillment_service
+    })
   end
 
-  defp parse_phone(value), do: value
+  defp add_item_to_existing_order(orders_acc, order_number, existing_order, order_row) do
+    updated_order = %{
+      existing_order |
+      order_items: [order_row.order_item | existing_order.order_items]
+    }
+    
+    Map.put(orders_acc, order_number, updated_order)
+  end
 end

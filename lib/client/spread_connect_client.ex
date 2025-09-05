@@ -1,49 +1,89 @@
 defmodule SpreadConnectClient.Client.SpreadConnectClient do
   @moduledoc """
-  Client for interacting with the SpreadConnect API.
+  HTTP client for interacting with the SpreadConnect API.
+  
+  Handles order creation with proper authentication and error handling.
+  Configuration is managed through Application environment settings.
   """
+
   alias SpreadConnectClient.Client.JsonKeys
 
-
   @doc """
-  Creates an order in SpreadConnect.
+  Creates an order in SpreadConnect API.
 
   ## Parameters
-    * order_data - Map containing the order data
-    * base_url - Optional base URL for the API (useful for testing)
+    * `order_data` - Map containing the order data with snake_case keys
+    * `base_url` - Optional override for API base URL (defaults to config value)
 
   ## Returns
-    * `{:ok, response}` on successful creation
-    * `{:error, response}` on failure
+    * `{:ok, response}` - Successful order creation with decoded response
+    * `{:error, response}` - Failed request with error details
+
+  ## Examples
+      iex> SpreadConnectClient.create_order(%{external_order_reference: "12345"})
+      {:ok, %{status: 201, body: %{"id" => "abc123"}}}
   """
   @spec create_order(map(), String.t() | nil) :: {:ok, map()} | {:error, map()}
   def create_order(order_data, base_url \\ nil) do
-    base_url = base_url || Application.get_env(:spread_connect_client, :base_url)
-    access_token = Application.get_env(:spread_connect_client, :access_token)
-    url = "#{base_url}/orders"
-    camelized_order_data = JsonKeys.camelize(order_data)
+    config = load_configuration(base_url)
+    transformed_data = JsonKeys.camelize(order_data)
 
-    case Req.post(url,
-           headers: [{"X-SPOD-ACCESS-TOKEN", access_token}],
-           json: camelized_order_data
-         ) do
-      {:ok, %Req.Response{status: status, body: body}} when status in 100..399 ->
-        {:ok, %{status: status, body: JSON.decode!(body)}}
+    config.url
+    |> make_api_request(config.access_token, transformed_data)
+    |> handle_response()
+  end
 
-      {:ok, %Req.Response{status: 401}} ->
-        {:error, %{status: 401, body: %{"error" => "Unauthorized access"}}}
+  # Private functions
 
-      {:ok, %Req.Response{status: status, body: body}} ->
-        decoded_body =
-          case JSON.decode(body) do
-            {:ok, decoded} -> decoded
-            {:error, _} -> %{"error" => "Invalid response format"}
-          end
+  defp load_configuration(override_url) do
+    %{
+      url: build_api_url(override_url),
+      access_token: Application.get_env(:spread_connect_client, :access_token)
+    }
+  end
 
-        {:error, %{status: status, body: decoded_body}}
+  defp build_api_url(nil) do
+    base_url = Application.get_env(:spread_connect_client, :base_url)
+    "#{base_url}/orders"
+  end
 
-      {:error, exception} ->
-        {:error, %{status: 500, body: %{"error" => Exception.message(exception)}}}
+  defp build_api_url(override_url) do
+    "#{override_url}/orders"
+  end
+
+  defp make_api_request(url, access_token, request_data) do
+    Req.post(url,
+      headers: [{"X-SPOD-ACCESS-TOKEN", access_token}],
+      json: request_data
+    )
+  end
+
+  defp handle_response({:ok, %Req.Response{status: status, body: body}}) 
+       when status in 100..399 do
+    {:ok, %{status: status, body: JSON.decode!(body)}}
+  end
+
+  defp handle_response({:ok, %Req.Response{status: 401}}) do
+    {:error, build_error_response(401, "Unauthorized access")}
+  end
+
+  defp handle_response({:ok, %Req.Response{status: status, body: body}}) do
+    decoded_body = decode_response_body(body)
+    {:error, %{status: status, body: decoded_body}}
+  end
+
+  defp handle_response({:error, exception}) do
+    {:error, build_error_response(500, Exception.message(exception))}
+  end
+
+  defp decode_response_body(body) do
+    case JSON.decode(body) do
+      {:ok, decoded} -> decoded
+      {:error, _} -> %{"error" => "Invalid response format"}
     end
+  end
+
+  defp build_error_response(status, message) do
+    %{status: status, body: %{"error" => message}}
   end
 end
