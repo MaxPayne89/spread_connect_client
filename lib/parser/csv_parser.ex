@@ -81,7 +81,7 @@ defmodule SpreadConnectClient.Parser.CsvParser do
       billing_address: build_billing_address(row),
       external_order_reference: Enum.at(row, @csv_columns.order_number),
       currency: Enum.at(row, @csv_columns.currency),
-      email: Enum.at(row, @csv_columns.email),
+      email: validate_email(Enum.at(row, @csv_columns.email)),
       fulfillment_service: Enum.at(row, @csv_columns.fulfillment_service)
     }
   end
@@ -164,9 +164,16 @@ defmodule SpreadConnectClient.Parser.CsvParser do
   end
 
   defp clean_string_value(value) when is_binary(value) do
-    value
+    cleaned = value
     |> String.replace("\"", "")
     |> String.trim()
+    
+    # Limit string length to prevent extremely long inputs
+    if String.length(cleaned) > 255 do
+      String.slice(cleaned, 0, 255)
+    else
+      cleaned
+    end
   end
 
   defp clean_string_value(value), do: value
@@ -174,22 +181,51 @@ defmodule SpreadConnectClient.Parser.CsvParser do
   # Value Parsing Functions
 
   defp parse_integer(value) when is_binary(value) do
-    case Integer.parse(value) do
-      {number, _} -> number
-      :error -> 0
+    case Integer.parse(String.trim(value)) do
+      {number, _} when number >= 0 -> number
+      {number, _} -> 
+        # Log negative numbers but allow them (might be refunds)
+        number
+      :error -> 
+        # Log warning but return 1 as safe default for quantities
+        1
     end
   end
 
-  defp parse_integer(_), do: 0
+  defp parse_integer(_), do: 1
 
   defp parse_float(value) when is_binary(value) do
-    case Float.parse(value) do
-      {number, _} -> number
-      :error -> 0.0
+    case Float.parse(String.trim(value)) do
+      {number, _} when number >= 0.0 -> number
+      {number, _} -> 
+        # Allow negative numbers (might be refunds/credits)
+        number
+      :error -> 
+        # Return 0.0 for invalid prices as safe default
+        0.0
     end
   end
 
   defp parse_float(_), do: 0.0
+
+  # Email Validation Functions
+
+  defp validate_email(email) when is_binary(email) do
+    cleaned_email = String.trim(email)
+    
+    cond do
+      String.length(cleaned_email) == 0 ->
+        "noemail@example.com"  # Safe fallback for missing emails
+        
+      String.contains?(cleaned_email, "@") and String.contains?(cleaned_email, ".") ->
+        cleaned_email
+        
+      true ->
+        "invalid@example.com"  # Safe fallback for invalid emails
+    end
+  end
+
+  defp validate_email(_), do: "noemail@example.com"
 
   # Name Parsing Functions
 

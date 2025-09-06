@@ -6,6 +6,7 @@ defmodule SpreadConnectClient.Client.SpreadConnectClient do
   Configuration is managed through Application environment settings.
   """
 
+  alias Jason, as: JSON
   alias SpreadConnectClient.Client.JsonKeys
 
   @doc """
@@ -60,7 +61,10 @@ defmodule SpreadConnectClient.Client.SpreadConnectClient do
 
   defp handle_response({:ok, %Req.Response{status: status, body: body}}) 
        when status in 100..399 do
-    {:ok, %{status: status, body: JSON.decode!(body)}}
+    case JSON.decode(body) do
+      {:ok, decoded_body} -> {:ok, %{status: status, body: decoded_body}}
+      {:error, _} -> {:error, build_error_response(400, "Invalid JSON response format")}
+    end
   end
 
   defp handle_response({:ok, %Req.Response{status: 401}}) do

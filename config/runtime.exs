@@ -14,7 +14,7 @@ case env do
     # No environment variables required
     config :spread_connect_client,
       base_url: "http://localhost:4001",
-      access_token: "e26b5dad-44b4-4d31-8f58-30b4118b943b"
+      access_token: "fake-test-token-not-real"
 
   _ ->
     # Development and production environments require real API credentials

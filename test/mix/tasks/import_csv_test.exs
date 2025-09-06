@@ -24,7 +24,7 @@ defmodule SpreadConnectClient.Integration.CsvImportTest do
 
         # Verify headers
         assert Plug.Conn.get_req_header(conn, "x-spod-access-token") == [
-                 "e26b5dad-44b4-4d31-8f58-30b4118b943b"
+                 "fake-test-token-not-real"
                ]
 
         Plug.Conn.resp(conn, 201, ~s({"id": "123", "status": "created"}))
@@ -50,7 +50,7 @@ defmodule SpreadConnectClient.Integration.CsvImportTest do
         order_reference = order_data["external_order_reference"]
 
         assert Plug.Conn.get_req_header(conn, "x-spod-access-token") == [
-                 "e26b5dad-44b4-4d31-8f58-30b4118b943b"
+                 "fake-test-token-not-real"
                ]
 
         Plug.Conn.resp(conn, 201, ~s({"id": "#{order_reference}", "status": "created"}))

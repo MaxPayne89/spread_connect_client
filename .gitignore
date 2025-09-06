@@ -24,3 +24,6 @@ spread_connect_client-*.tar
 
 # Temporary files, for example, from tests.
 /tmp/
+
+# Environment variable files
+.env*
