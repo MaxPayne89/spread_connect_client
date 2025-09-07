@@ -53,14 +53,18 @@ defmodule SpreadConnectClient.Client.SpreadConnectClient do
   end
 
   defp make_api_request(url, access_token, request_data) do
+    pool_timeout = Application.get_env(:spread_connect_client, :pool_timeout, 5_000)
+    receive_timeout = Application.get_env(:spread_connect_client, :receive_timeout, 30_000)
+    max_retries = Application.get_env(:spread_connect_client, :max_retries, 2)
+
     Req.post(url,
       headers: [{"X-SPOD-ACCESS-TOKEN", access_token}],
       json: request_data,
       finch: SpreadConnectClient.Finch,
-      pool_timeout: 5_000,
-      receive_timeout: 30_000,
+      pool_timeout: pool_timeout,
+      receive_timeout: receive_timeout,
       retry: :transient,
-      max_retries: 2
+      max_retries: max_retries
     )
   end
 

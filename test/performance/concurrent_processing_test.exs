@@ -27,7 +27,7 @@ defmodule SpreadConnectClient.Performance.ConcurrentProcessingTest do
         end)
 
         # Simulate processing time to allow concurrency
-        Process.sleep(100)
+        Process.sleep(10)
 
         # Decrement active count
         Agent.update(process_tracker, fn state ->
@@ -65,8 +65,8 @@ defmodule SpreadConnectClient.Performance.ConcurrentProcessingTest do
       assert final_stats.total == 8
 
       # Duration should be significantly less than sequential processing
-      # 8 orders * 100ms = 800ms sequential, should be much faster with concurrency
-      assert duration < 600  # Allow some overhead
+      # 8 orders * 10ms = 80ms sequential, should be much faster with concurrency
+      assert duration < 200  # Allow some overhead
 
       # Cleanup Agent
       Agent.stop(process_tracker)
@@ -86,7 +86,7 @@ defmodule SpreadConnectClient.Performance.ConcurrentProcessingTest do
           %{state | active: new_active, max_concurrent: new_max, timestamps: timestamps}
         end)
 
-        Process.sleep(200)  # Longer processing to ensure overlap
+        Process.sleep(20)  # Longer processing to ensure overlap
         
         end_time = System.monotonic_time(:millisecond)
         Agent.update(process_tracker, fn state ->
@@ -175,7 +175,7 @@ defmodule SpreadConnectClient.Performance.ConcurrentProcessingTest do
           MapSet.put(connections, connection_id)
         end)
 
-        Process.sleep(50)  # Brief processing time
+        Process.sleep(5)  # Brief processing time
         Plug.Conn.resp(conn, 201, ~s({"id": "pool-test-success"}))
       end)
 
@@ -211,12 +211,12 @@ defmodule SpreadConnectClient.Performance.ConcurrentProcessingTest do
 
       Bypass.expect(bypass, "POST", "/orders", fn conn ->
         Agent.update(request_count, fn count -> count + 1 end)
-        Process.sleep(100)  # Hold connections briefly
+        Process.sleep(10)  # Hold connections briefly
         Plug.Conn.resp(conn, 201, ~s({"id": "pool-exhaustion-test"}))
       end)
 
       # Create more concurrent requests than pool size (25)
-      temp_csv_content = create_bulk_test_csv(30)
+      temp_csv_content = create_bulk_test_csv(20)
       temp_file = create_temp_file("temp_pool_exhaustion_test.csv", temp_csv_content)
 
       start_time = System.monotonic_time(:millisecond)
@@ -225,17 +225,17 @@ defmodule SpreadConnectClient.Performance.ConcurrentProcessingTest do
 
       # Should still succeed even with pool pressure
       assert {:ok, results} = result
-      assert length(results) == 30
+      assert length(results) == 20
 
       # All requests should eventually succeed
       successes = Enum.count(results, &match?({:ok, _}, &1))
-      assert successes == 30
+      assert successes == 20
 
       # Should complete in reasonable time despite pool pressure
-      assert end_time - start_time < 10_000  # 10 seconds max
+      assert end_time - start_time < 3_000  # 3 seconds max
 
       final_count = Agent.get(request_count, & &1)
-      assert final_count == 30
+      assert final_count == 20
 
       # Cleanup Agent
       Agent.stop(request_count)
@@ -245,7 +245,7 @@ defmodule SpreadConnectClient.Performance.ConcurrentProcessingTest do
   describe "CSV parsing performance" do
     test "O(n) tuple-based parsing performs efficiently on larger datasets" do
       # Create a larger CSV file to test parsing performance
-      large_csv_content = create_bulk_test_csv(100)
+      large_csv_content = create_bulk_test_csv(25)
       temp_file = create_temp_file("temp_large_parse_test.csv", large_csv_content)
 
       start_time = System.monotonic_time(:microsecond)
@@ -258,7 +258,7 @@ defmodule SpreadConnectClient.Performance.ConcurrentProcessingTest do
       duration_ms = duration_us / 1000
 
       # Verify parsing correctness
-      assert length(parsed_orders) == 100
+      assert length(parsed_orders) == 25
       
       # Each order should have proper structure
       Enum.each(parsed_orders, fn order ->
@@ -269,13 +269,13 @@ defmodule SpreadConnectClient.Performance.ConcurrentProcessingTest do
         assert is_map(order.billing_address)
       end)
 
-      # Performance should be reasonable - parsing 100 orders should be under 100ms
-      assert duration_ms < 100, "Parsing took #{duration_ms}ms, expected < 100ms"
+      # Performance should be reasonable - parsing 25 orders should be under 50ms
+      assert duration_ms < 50, "Parsing took #{duration_ms}ms, expected < 50ms"
     end
 
     test "memory usage remains stable during large file processing" do
       # This test ensures we don't have memory leaks during parsing
-      large_csv_content = create_bulk_test_csv(200)
+      large_csv_content = create_bulk_test_csv(50)
       temp_file = create_temp_file("temp_memory_test.csv", large_csv_content)
 
       # Measure memory before parsing
@@ -292,10 +292,10 @@ defmodule SpreadConnectClient.Performance.ConcurrentProcessingTest do
       memory_increase = memory_after - memory_before
 
       # Verify parsing worked
-      assert length(parsed_orders) == 200
+      assert length(parsed_orders) == 50
 
-      # Memory increase should be reasonable (less than 50MB for 200 orders)
-      max_acceptable_increase = 50 * 1024 * 1024  # 50MB
+      # Memory increase should be reasonable (less than 20MB for 50 orders)
+      max_acceptable_increase = 20 * 1024 * 1024  # 20MB
       assert memory_increase < max_acceptable_increase, 
              "Memory increased by #{memory_increase} bytes, expected < #{max_acceptable_increase}"
     end

@@ -1,5 +1,5 @@
 defmodule SpreadConnectClient.Integration.CsvImportTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case
 
   alias Mix.Tasks.Import.Csv
 
@@ -113,7 +113,7 @@ defmodule SpreadConnectClient.Integration.CsvImportTest do
       File.rm!(temp_file)
     end
 
-    @tag timeout: 60_000
+    @tag timeout: 5_000
     test "handles network timeout during API calls", %{bypass: bypass} do
       # Disconnect the bypass server to simulate network timeout
       Bypass.down(bypass)

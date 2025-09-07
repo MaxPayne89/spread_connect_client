@@ -1,5 +1,5 @@
 defmodule SpreadConnectClient.Client.SpreadConnectClientTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case
 
   alias SpreadConnectClient.Client.SpreadConnectClient
 

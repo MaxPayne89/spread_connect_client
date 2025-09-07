@@ -11,13 +11,17 @@ config :spread_connect_client,
   # Localhost endpoint for test mocking
   base_url: "http://localhost:4001",
   # Fake API key - safe for testing, won't create real orders
-  access_token: "fake-test-token-not-real"
+  access_token: "fake-test-token-not-real",
+  # Fast timeouts and minimal retries for test performance
+  pool_timeout: 500,
+  receive_timeout: 1_000,
+  max_retries: 0
 
 # Logging configuration for test environment
 # Reduced verbosity to minimize test output noise
 config :logger, :console,
-  level: :warn,
+  level: :warning,
   format: "[$level] $message\n"
 
 config :logger,
-  level: :warn
+  level: :warning
