@@ -12,3 +12,12 @@ config :spread_connect_client,
   base_url: "http://localhost:4001",
   # Fake API key - safe for testing, won't create real orders
   access_token: "fake-test-token-not-real"
+
+# Logging configuration for test environment
+# Reduced verbosity to minimize test output noise
+config :logger, :console,
+  level: :warn,
+  format: "[$level] $message\n"
+
+config :logger,
+  level: :warn

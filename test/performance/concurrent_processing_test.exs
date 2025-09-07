@@ -39,8 +39,7 @@ defmodule SpreadConnectClient.Performance.ConcurrentProcessingTest do
 
       # Create a CSV file with multiple orders
       temp_csv_content = create_bulk_test_csv(8)
-      temp_file = "test/fixtures/temp_concurrent_test.csv"
-      File.write!(temp_file, temp_csv_content)
+      temp_file = create_temp_file("temp_concurrent_test.csv", temp_csv_content)
 
       start_time = System.monotonic_time(:millisecond)
       
@@ -69,8 +68,7 @@ defmodule SpreadConnectClient.Performance.ConcurrentProcessingTest do
       # 8 orders * 100ms = 800ms sequential, should be much faster with concurrency
       assert duration < 600  # Allow some overhead
 
-      # Cleanup
-      File.rm!(temp_file)
+      # Cleanup Agent
       Agent.stop(process_tracker)
     end
 
@@ -102,8 +100,7 @@ defmodule SpreadConnectClient.Performance.ConcurrentProcessingTest do
 
       # Create a CSV file with 15 orders to test the limit
       temp_csv_content = create_bulk_test_csv(15)
-      temp_file = "test/fixtures/temp_limit_test.csv"
-      File.write!(temp_file, temp_csv_content)
+      temp_file = create_temp_file("temp_limit_test.csv", temp_csv_content)
 
       result = Csv.run(temp_file)
 
@@ -115,30 +112,30 @@ defmodule SpreadConnectClient.Performance.ConcurrentProcessingTest do
       final_stats = Agent.get(process_tracker, & &1)
       assert final_stats.max_concurrent <= 10
 
-      # Cleanup
-      File.rm!(temp_file)
+      # Cleanup Agent
       Agent.stop(process_tracker)
     end
 
     test "handles mixed success and failure responses concurrently", %{bypass: bypass} do
-      {:ok, call_count} = Agent.start_link(fn -> 0 end)
-
+      # Use deterministic failure based on order number rather than call count
+      # This makes the test behavior predictable regardless of request timing
       Bypass.expect(bypass, "POST", "/orders", fn conn ->
-        current_count = Agent.get_and_update(call_count, fn count -> {count, count + 1} end)
-
-        case current_count do
-          0 ->
-            # First request fails with 422 error
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+        request_data = Jason.decode!(body)
+        order_ref = request_data["externalOrderReference"]
+        
+        case order_ref do
+          "BULK000001" ->
+            # First order always fails with 422 error
             Plug.Conn.resp(conn, 422, ~s({"error": "Validation failed"}))
           _ ->
-            # Other requests succeed quickly  
-            Plug.Conn.resp(conn, 201, ~s({"id": "success-#{current_count}"}))
+            # Other orders succeed
+            Plug.Conn.resp(conn, 201, ~s({"id": "success-#{order_ref}"}))
         end
       end)
 
       temp_csv_content = create_bulk_test_csv(3)
-      temp_file = "test/fixtures/temp_mixed_test.csv"
-      File.write!(temp_file, temp_csv_content)
+      temp_file = create_temp_file("temp_mixed_test.csv", temp_csv_content)
 
       start_time = System.monotonic_time(:millisecond)
       result = Csv.run(temp_file)
@@ -161,10 +158,6 @@ defmodule SpreadConnectClient.Performance.ConcurrentProcessingTest do
       
       assert errors == 1
       assert successes == 2
-
-      # Cleanup
-      File.rm!(temp_file)
-      Agent.stop(call_count)
     end
   end
 
@@ -187,8 +180,7 @@ defmodule SpreadConnectClient.Performance.ConcurrentProcessingTest do
       end)
 
       temp_csv_content = create_bulk_test_csv(20)
-      temp_file = "test/fixtures/temp_pool_test.csv"
-      File.write!(temp_file, temp_csv_content)
+      temp_file = create_temp_file("temp_pool_test.csv", temp_csv_content)
 
       result = Csv.run(temp_file)
 
@@ -209,8 +201,7 @@ defmodule SpreadConnectClient.Performance.ConcurrentProcessingTest do
       assert connection_count <= 25
       assert connection_count < 20  # Should definitely reuse connections
 
-      # Cleanup
-      File.rm!(temp_file)
+      # Cleanup Agent
       Agent.stop(connection_tracker)
     end
 
@@ -226,8 +217,7 @@ defmodule SpreadConnectClient.Performance.ConcurrentProcessingTest do
 
       # Create more concurrent requests than pool size (25)
       temp_csv_content = create_bulk_test_csv(30)
-      temp_file = "test/fixtures/temp_pool_exhaustion_test.csv"
-      File.write!(temp_file, temp_csv_content)
+      temp_file = create_temp_file("temp_pool_exhaustion_test.csv", temp_csv_content)
 
       start_time = System.monotonic_time(:millisecond)
       result = Csv.run(temp_file)
@@ -247,8 +237,7 @@ defmodule SpreadConnectClient.Performance.ConcurrentProcessingTest do
       final_count = Agent.get(request_count, & &1)
       assert final_count == 30
 
-      # Cleanup
-      File.rm!(temp_file)
+      # Cleanup Agent
       Agent.stop(request_count)
     end
   end
@@ -257,8 +246,7 @@ defmodule SpreadConnectClient.Performance.ConcurrentProcessingTest do
     test "O(n) tuple-based parsing performs efficiently on larger datasets" do
       # Create a larger CSV file to test parsing performance
       large_csv_content = create_bulk_test_csv(100)
-      temp_file = "test/fixtures/temp_large_parse_test.csv"
-      File.write!(temp_file, large_csv_content)
+      temp_file = create_temp_file("temp_large_parse_test.csv", large_csv_content)
 
       start_time = System.monotonic_time(:microsecond)
       
@@ -283,16 +271,12 @@ defmodule SpreadConnectClient.Performance.ConcurrentProcessingTest do
 
       # Performance should be reasonable - parsing 100 orders should be under 100ms
       assert duration_ms < 100, "Parsing took #{duration_ms}ms, expected < 100ms"
-
-      # Cleanup
-      File.rm!(temp_file)
     end
 
     test "memory usage remains stable during large file processing" do
       # This test ensures we don't have memory leaks during parsing
       large_csv_content = create_bulk_test_csv(200)
-      temp_file = "test/fixtures/temp_memory_test.csv"
-      File.write!(temp_file, large_csv_content)
+      temp_file = create_temp_file("temp_memory_test.csv", large_csv_content)
 
       # Measure memory before parsing
       {:ok, memory_before} = :erlang.memory() |> Keyword.fetch(:total)
@@ -314,9 +298,6 @@ defmodule SpreadConnectClient.Performance.ConcurrentProcessingTest do
       max_acceptable_increase = 50 * 1024 * 1024  # 50MB
       assert memory_increase < max_acceptable_increase, 
              "Memory increased by #{memory_increase} bytes, expected < #{max_acceptable_increase}"
-
-      # Cleanup
-      File.rm!(temp_file)
     end
   end
 
@@ -331,5 +312,21 @@ defmodule SpreadConnectClient.Performance.ConcurrentProcessingTest do
     end
 
     [headers | rows] |> Enum.join("\n")
+  end
+
+  # Helper function to create temporary files with guaranteed cleanup
+  defp create_temp_file(filename, content) do
+    # Use test pid and timestamp to avoid conflicts between parallel tests
+    unique_suffix = "#{System.unique_integer([:positive])}"
+    temp_file = "test/fixtures/#{Path.basename(filename, ".csv")}_#{unique_suffix}.csv"
+    
+    File.write!(temp_file, content)
+    
+    # Ensure cleanup happens even if test fails
+    on_exit(fn ->
+      if File.exists?(temp_file), do: File.rm(temp_file)
+    end)
+    
+    temp_file
   end
 end

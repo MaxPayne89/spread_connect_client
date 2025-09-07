@@ -21,16 +21,24 @@ case env do
     access_token = System.get_env("SPREAD_CONNECT_ACCESS_TOKEN")
     
     if is_nil(access_token) do
-      raise """
-      Environment variable SPREAD_CONNECT_ACCESS_TOKEN is required but not set.
-      
-      To set it:
-        export SPREAD_CONNECT_ACCESS_TOKEN="your-api-key-here"
-      
-      Or create a .env file and source it:
-        echo 'export SPREAD_CONNECT_ACCESS_TOKEN="your-api-key-here"' >> .env
-        source .env
-      """
+      case env do
+        :prod ->
+          # Generic error message for production - no internal details exposed
+          raise "Required API credentials not configured. Please check your environment configuration."
+        
+        _ ->
+          # Detailed error message for development environments
+          raise """
+          Environment variable SPREAD_CONNECT_ACCESS_TOKEN is required but not set.
+          
+          To set it:
+            export SPREAD_CONNECT_ACCESS_TOKEN="your-api-key-here"
+          
+          Or create a .env file and source it:
+            echo 'export SPREAD_CONNECT_ACCESS_TOKEN="your-api-key-here"' >> .env
+            source .env
+          """
+      end
     end
     
     # Allow base URL override via environment variable

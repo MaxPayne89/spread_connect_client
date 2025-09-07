@@ -60,7 +60,8 @@ defmodule SpreadConnectClient.Parser.CsvParserTest do
         Path.join(@fixtures_path, "invalid_format.csv")
         |> CsvParser.parse_file()
 
-      assert result == []
+      assert {:error, error_message} = result
+      assert String.contains?(error_message, "CSV validation failed")
     end
 
     test "filters out rows with invalid fulfillment service" do
@@ -143,7 +144,8 @@ defmodule SpreadConnectClient.Parser.CsvParserTest do
         Path.join(@fixtures_path, "insufficient_columns.csv")
         |> CsvParser.parse_file()
 
-      assert result == []
+      assert {:error, error_message} = result
+      assert String.contains?(error_message, "Insufficient columns")
     end
 
     test "handles phone number conversion correctly" do

@@ -140,13 +140,15 @@ defmodule SpreadConnectClient.Integration.CsvImportTest do
     test "handles invalid CSV file format" do
       result = Csv.run("test/fixtures/invalid_format.csv")
 
-      assert {:ok, []} = result
+      assert {:error, error_message} = result
+      assert String.contains?(error_message, "CSV validation failed")
     end
 
     test "handles CSV with no Spreadconnect orders" do
       result = Csv.run("test/fixtures/insufficient_columns.csv")
 
-      assert {:ok, []} = result
+      assert {:error, error_message} = result
+      assert String.contains?(error_message, "CSV validation failed")
     end
 
     test "handles mixed success and failure in multiple orders", %{bypass: bypass} do

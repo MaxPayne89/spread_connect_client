@@ -29,6 +29,7 @@ defmodule Mix.Tasks.Import.Csv do
   """
 
   use Mix.Task
+  require Logger
 
   alias SpreadConnectClient.Parser.CsvParser
   alias SpreadConnectClient.Client.SpreadConnectClient
@@ -75,10 +76,13 @@ defmodule Mix.Tasks.Import.Csv do
   end
 
   defp import_csv_file(file_path, base_url) do
-    IO.puts("Starting import of #{file_path}")
+    Logger.info("Starting CSV import", 
+      file_path: file_path, 
+      base_url: base_url || "default"
+    )
 
     with {:ok, :validated} <- read_and_validate_file(file_path),
-         parsed_orders <- parse_csv_data(file_path),
+         {:ok, parsed_orders} <- parse_csv_data(file_path),
          results <- process_orders(parsed_orders, base_url) do
       {:ok, results}
     else
@@ -89,7 +93,11 @@ defmodule Mix.Tasks.Import.Csv do
   defp read_and_validate_file(file_path) do
     case File.stat(file_path) do
       {:ok, %{size: size, access: access}} when access in [:read, :read_write] ->
-        IO.puts("Processing file with #{size} bytes")
+        Logger.info("Processing CSV file", 
+          file_path: file_path,
+          file_size_bytes: size, 
+          access_mode: access
+        )
         {:ok, :validated}
         
       {:ok, %{access: access}} ->
@@ -101,7 +109,10 @@ defmodule Mix.Tasks.Import.Csv do
   end
 
   defp parse_csv_data(file_path) do
-    CsvParser.parse_file(file_path)
+    case CsvParser.parse_file(file_path) do
+      {:error, reason} -> {:error, reason}
+      orders when is_list(orders) -> {:ok, orders}
+    end
   end
 
   defp process_orders(orders, base_url) do
@@ -135,12 +146,47 @@ defmodule Mix.Tasks.Import.Csv do
   end
 
   defp display_order_error(index, error) do
-    IO.puts("Error processing order #{index + 1}: #{inspect(error)}")
+    # Log structured error without exposing sensitive order data
+    Logger.error("Order processing failed", 
+      order_index: index + 1,
+      error_status: error[:status] || "unknown",
+      error_type: get_error_type(error)
+    )
+    
+    # Still display error for CLI users, but sanitized
+    IO.puts("Error processing order #{index + 1}: #{get_sanitized_error_message(error)}")
   end
+  
+  defp get_error_type(error) when is_map(error) do
+    cond do
+      error[:status] in [400, 401, 403] -> "authentication_error"
+      error[:status] in [422, 400] -> "validation_error"  
+      error[:status] in [500, 502, 503] -> "server_error"
+      error[:status] == 429 -> "rate_limit_error"
+      true -> "unknown_error"
+    end
+  end
+  defp get_error_type(_), do: "unknown_error"
+  
+  defp get_sanitized_error_message(error) when is_map(error) do
+    case error do
+      %{body: %{"error" => message}} when is_binary(message) -> message
+      %{status: status} -> "HTTP #{status} error"
+      _ -> "Processing error"
+    end
+  end
+  defp get_sanitized_error_message(_), do: "Processing error"
 
   defp display_import_summary(results) do
     {successful_orders, failed_orders} = Enum.split_with(results, &match?({:ok, _}, &1))
     
+    Logger.info("Import completed", 
+      successful_count: length(successful_orders),
+      failed_count: length(failed_orders),
+      total_count: length(results)
+    )
+    
+    # Also display summary for CLI users
     IO.puts("\n" <> build_summary_message(successful_orders, failed_orders))
   end
 
@@ -153,6 +199,12 @@ defmodule Mix.Tasks.Import.Csv do
   end
 
   defp display_error_message(reason) do
+    Logger.error("CSV import failed", 
+      reason: reason,
+      error_type: "import_failure"
+    )
+    
+    # Still display error for CLI users  
     IO.puts("Import failed: #{reason}")
   end
 

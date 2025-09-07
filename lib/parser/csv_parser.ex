@@ -7,6 +7,7 @@ defmodule SpreadConnectClient.Parser.CsvParser do
   """
 
   alias NimbleCSV.RFC4180, as: CSV
+  alias SpreadConnectClient.Schema.CsvSchema
 
   # Constants
   @spread_connect_fulfillment_service "Spreadconnect"
@@ -15,130 +16,144 @@ defmodule SpreadConnectClient.Parser.CsvParser do
   @state_code_length 2
   @german_phone_prefix "+49"
 
-  # CSV column positions (for documentation and maintainability)
-  @csv_columns %{
-    order_number: 0,
-    email: 5,
-    sku: 10,
-    quantity: 11,
-    price: 13,
-    recipient_name: 19,
-    recipient_phone: 20,
-    recipient_company: 21,
-    delivery_country: 22,
-    delivery_state: 23,
-    delivery_city: 25,
-    delivery_address: 26,
-    delivery_postal_code: 27,
-    billing_name: 28,
-    billing_company: 30,
-    billing_country: 31,
-    billing_state: 32,
-    billing_city: 34,
-    billing_address: 35,
-    billing_postal_code: 36,
-    currency: 44,
-    fulfillment_service: 50
-  }
-
   @doc """
   Parses a CSV file and returns a list of order maps ready for API submission.
   
   Only processes orders with 'Spreadconnect' fulfillment service.
   Groups multiple line items by order number into consolidated orders.
+  
+  Validates CSV schema before processing to detect format changes.
   """
-  @spec parse_file(String.t()) :: [map()]
+  @spec parse_file(String.t()) :: [map()] | {:error, String.t()}
   def parse_file(file_path) do
-    file_path
-    |> File.stream!()
-    |> CSV.parse_stream(skip_headers: true)
-    |> Stream.map(&parse_csv_row/1)
-    |> Stream.filter(&filter_valid_rows/1)
-    |> Stream.filter(&filter_spread_connect_orders/1)
-    |> Stream.map(&extract_order_data/1)
-    |> Stream.map(&clean_order_values/1)
-    |> Enum.reduce(%{}, &group_by_order_number/2)
-    |> Map.values()
+    with {:ok, headers} <- validate_csv_headers(file_path),
+         {:ok, :valid} <- CsvSchema.validate_headers(headers) do
+      
+      file_path
+      |> File.stream!()
+      |> CSV.parse_stream(skip_headers: true)
+      |> Stream.map(&parse_csv_row/1)
+      |> Stream.filter(&filter_valid_rows/1)
+      |> Stream.filter(&filter_spread_connect_orders/1)
+      |> Stream.map(&extract_order_data/1)
+      |> Stream.map(&clean_order_values/1)
+      |> Enum.reduce(%{}, &group_by_order_number/2)
+      |> Map.values()
+    else
+      {:error, reason} -> {:error, "CSV validation failed: #{reason}"}
+    end
+  end
+
+  # CSV Schema Validation
+
+  defp validate_csv_headers(file_path) do
+    case File.open(file_path, [:read]) do
+      {:ok, file} ->
+        case IO.read(file, :line) do
+          :eof -> 
+            File.close(file)
+            {:error, "Empty CSV file"}
+          
+          data when is_binary(data) ->
+            File.close(file)
+            headers = data 
+                     |> String.trim() 
+                     |> CSV.parse_string(skip_headers: false) 
+                     |> List.first()
+            {:ok, headers}
+          
+          {:error, reason} ->
+            File.close(file)
+            {:error, "Failed to read CSV headers: #{inspect(reason)}"}
+        end
+      
+      {:error, reason} ->
+        {:error, "Failed to open CSV file: #{inspect(reason)}"}
+    end
+  rescue
+    error ->
+      {:error, "CSV header validation error: #{inspect(error)}"}
   end
 
   # CSV Row Parsing
 
-  defp parse_csv_row(row) when length(row) >= 51 do
-    {:ok, build_order_from_csv_row(row)}
-  rescue
-    _ -> {:error, "Failed to parse CSV row"}
-  end
-
-  defp parse_csv_row(invalid_row) do
-    {:error, "Invalid CSV row format: expected at least 51 columns, got #{length(invalid_row)}"}
+  defp parse_csv_row(row) do
+    case CsvSchema.validate_row(row) do
+      {:ok, :valid} ->
+        try do
+          {:ok, build_order_from_csv_row(row)}
+        rescue
+          _ -> {:error, "Failed to parse CSV row"}
+        end
+      
+      {:error, error_message} ->
+        {:error, error_message}
+    end
   end
 
   defp build_order_from_csv_row(row) do
-    # Convert to tuple once for O(1) access throughout parsing
-    row_tuple = List.to_tuple(row)
-    
     %{
-      order_item: build_order_item(row_tuple),
-      phone: parse_phone_number(elem(row_tuple, @csv_columns.recipient_phone)),
-      shipping: build_shipping_info(row_tuple),
-      billing_address: build_billing_address(row_tuple),
-      external_order_reference: elem(row_tuple, @csv_columns.order_number),
-      currency: elem(row_tuple, @csv_columns.currency),
-      email: validate_email(elem(row_tuple, @csv_columns.email)),
-      fulfillment_service: elem(row_tuple, @csv_columns.fulfillment_service)
+      order_item: build_order_item(row),
+      phone: parse_phone_number(CsvSchema.get_field_value(row, :recipient_phone)),
+      shipping: build_shipping_info(row),
+      billing_address: build_billing_address(row),
+      external_order_reference: CsvSchema.get_field_value(row, :order_number),
+      currency: CsvSchema.get_field_value(row, :currency),
+      email: validate_email(CsvSchema.get_field_value(row, :email)),
+      fulfillment_service: CsvSchema.get_field_value(row, :fulfillment_service)
     }
   end
 
-  defp build_order_item(row_tuple) do
+  defp build_order_item(row) do
     %{
-      sku: elem(row_tuple, @csv_columns.sku),
-      external_order_item_reference: elem(row_tuple, @csv_columns.order_number),
-      quantity: parse_integer(elem(row_tuple, @csv_columns.quantity)),
+      sku: CsvSchema.get_field_value(row, :sku),
+      external_order_item_reference: CsvSchema.get_field_value(row, :order_number),
+      quantity: parse_integer(CsvSchema.get_field_value(row, :quantity)),
       customer_price: %{
-        amount: parse_float(elem(row_tuple, @csv_columns.price)),
-        currency: elem(row_tuple, @csv_columns.currency)
+        amount: parse_float(CsvSchema.get_field_value(row, :price)),
+        currency: CsvSchema.get_field_value(row, :currency)
       }
     }
   end
 
-  defp build_shipping_info(row_tuple) do
+  defp build_shipping_info(row) do
     %{
       preferred_type: @default_shipping_type,
-      address: build_shipping_address(row_tuple),
+      address: build_shipping_address(row),
       customer_price: %{
-        amount: parse_float(elem(row_tuple, @csv_columns.price)),
-        currency: elem(row_tuple, @csv_columns.currency)
+        amount: parse_float(CsvSchema.get_field_value(row, :price)),
+        currency: CsvSchema.get_field_value(row, :currency)
       }
     }
   end
 
-  defp build_shipping_address(row_tuple) do
-    recipient_name = elem(row_tuple, @csv_columns.recipient_name)
+  defp build_shipping_address(row) do
+    recipient_name = CsvSchema.get_field_value(row, :recipient_name)
     
     %{
       first_name: extract_first_name(recipient_name),
       last_name: extract_last_name(recipient_name),
-      company: elem(row_tuple, @csv_columns.recipient_company),
-      country: normalize_country_code(elem(row_tuple, @csv_columns.delivery_country)),
-      state: normalize_state_code(elem(row_tuple, @csv_columns.delivery_state)),
-      city: clean_city_name(elem(row_tuple, @csv_columns.delivery_city)),
-      street: elem(row_tuple, @csv_columns.delivery_address),
-      zip_code: elem(row_tuple, @csv_columns.delivery_postal_code)
+      company: CsvSchema.get_field_value(row, :recipient_company),
+      country: normalize_country_code(CsvSchema.get_field_value(row, :delivery_country)),
+      state: normalize_state_code(CsvSchema.get_field_value(row, :delivery_state)),
+      city: clean_city_name(CsvSchema.get_field_value(row, :delivery_city)),
+      street: CsvSchema.get_field_value(row, :delivery_address),
+      zip_code: CsvSchema.get_field_value(row, :delivery_postal_code)
     }
   end
 
-  defp build_billing_address(row_tuple) do
-    billing_name = elem(row_tuple, @csv_columns.billing_name)
+  defp build_billing_address(row) do
+    billing_name = CsvSchema.get_field_value(row, :billing_name)
     
     %{
       first_name: extract_first_name(billing_name),
       last_name: extract_last_name(billing_name),
-      company: elem(row_tuple, @csv_columns.billing_company),
-      country: normalize_country_code(elem(row_tuple, @csv_columns.billing_country)),
-      state: normalize_state_code(elem(row_tuple, @csv_columns.billing_state)),
-      city: clean_city_name(elem(row_tuple, @csv_columns.billing_city)),
-      street: elem(row_tuple, @csv_columns.billing_address),
-      zip_code: elem(row_tuple, @csv_columns.billing_postal_code)
+      company: CsvSchema.get_field_value(row, :billing_company),
+      country: normalize_country_code(CsvSchema.get_field_value(row, :billing_country)),
+      state: normalize_state_code(CsvSchema.get_field_value(row, :billing_state)),
+      city: clean_city_name(CsvSchema.get_field_value(row, :billing_city)),
+      street: CsvSchema.get_field_value(row, :billing_address),
+      zip_code: CsvSchema.get_field_value(row, :billing_postal_code)
     }
   end
 
