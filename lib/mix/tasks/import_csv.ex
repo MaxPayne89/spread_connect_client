@@ -77,7 +77,7 @@ defmodule Mix.Tasks.Import.Csv do
   defp import_csv_file(file_path, base_url) do
     IO.puts("Starting import of #{file_path}")
 
-    with {:ok, _content} <- read_and_validate_file(file_path),
+    with {:ok, :validated} <- read_and_validate_file(file_path),
          parsed_orders <- parse_csv_data(file_path),
          results <- process_orders(parsed_orders, base_url) do
       {:ok, results}
@@ -87,13 +87,16 @@ defmodule Mix.Tasks.Import.Csv do
   end
 
   defp read_and_validate_file(file_path) do
-    case File.read(file_path) do
-      {:ok, content} ->
-        IO.puts("Successfully read file with #{byte_size(content)} bytes")
-        {:ok, content}
+    case File.stat(file_path) do
+      {:ok, %{size: size, access: access}} when access in [:read, :read_write] ->
+        IO.puts("Processing file with #{size} bytes")
+        {:ok, :validated}
+        
+      {:ok, %{access: access}} ->
+        {:error, "File not readable: access is #{access}"}
         
       {:error, reason} ->
-        {:error, "Failed to read file: #{inspect(reason)}"}
+        {:error, "Failed to access file: #{inspect(reason)}"}
     end
   end
 
@@ -103,8 +106,16 @@ defmodule Mix.Tasks.Import.Csv do
 
   defp process_orders(orders, base_url) do
     orders
-    |> Enum.with_index()
-    |> Enum.map(&process_single_order(&1, base_url))
+    |> Stream.with_index()
+    |> Task.async_stream(&process_single_order(&1, base_url), 
+                          max_concurrency: 10,
+                          timeout: 30_000,
+                          on_timeout: :kill_task)
+    |> Enum.map(fn
+      {:ok, result} -> result
+      {:exit, :timeout} -> {:error, {-1, %{status: 408, body: %{"error" => "Request timeout"}}}}
+      {:exit, reason} -> {:error, {-1, %{status: 500, body: %{"error" => "Task failed: #{inspect(reason)}"}}}}
+    end)
   end
 
   defp process_single_order({order_data, index}, base_url) do
@@ -116,6 +127,11 @@ defmodule Mix.Tasks.Import.Csv do
         display_order_error(index, error)
         {:error, {index, error}}
     end
+  rescue
+    exception ->
+      error_response = %{status: 500, body: %{"error" => Exception.message(exception)}}
+      display_order_error(index, error_response)
+      {:error, {index, error_response}}
   end
 
   defp display_order_error(index, error) do

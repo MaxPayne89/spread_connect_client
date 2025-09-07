@@ -74,68 +74,71 @@ defmodule SpreadConnectClient.Parser.CsvParser do
   end
 
   defp build_order_from_csv_row(row) do
+    # Convert to tuple once for O(1) access throughout parsing
+    row_tuple = List.to_tuple(row)
+    
     %{
-      order_item: build_order_item(row),
-      phone: parse_phone_number(Enum.at(row, @csv_columns.recipient_phone)),
-      shipping: build_shipping_info(row),
-      billing_address: build_billing_address(row),
-      external_order_reference: Enum.at(row, @csv_columns.order_number),
-      currency: Enum.at(row, @csv_columns.currency),
-      email: validate_email(Enum.at(row, @csv_columns.email)),
-      fulfillment_service: Enum.at(row, @csv_columns.fulfillment_service)
+      order_item: build_order_item(row_tuple),
+      phone: parse_phone_number(elem(row_tuple, @csv_columns.recipient_phone)),
+      shipping: build_shipping_info(row_tuple),
+      billing_address: build_billing_address(row_tuple),
+      external_order_reference: elem(row_tuple, @csv_columns.order_number),
+      currency: elem(row_tuple, @csv_columns.currency),
+      email: validate_email(elem(row_tuple, @csv_columns.email)),
+      fulfillment_service: elem(row_tuple, @csv_columns.fulfillment_service)
     }
   end
 
-  defp build_order_item(row) do
+  defp build_order_item(row_tuple) do
     %{
-      sku: Enum.at(row, @csv_columns.sku),
-      external_order_item_reference: Enum.at(row, @csv_columns.order_number),
-      quantity: parse_integer(Enum.at(row, @csv_columns.quantity)),
+      sku: elem(row_tuple, @csv_columns.sku),
+      external_order_item_reference: elem(row_tuple, @csv_columns.order_number),
+      quantity: parse_integer(elem(row_tuple, @csv_columns.quantity)),
       customer_price: %{
-        amount: parse_float(Enum.at(row, @csv_columns.price)),
-        currency: Enum.at(row, @csv_columns.currency)
+        amount: parse_float(elem(row_tuple, @csv_columns.price)),
+        currency: elem(row_tuple, @csv_columns.currency)
       }
     }
   end
 
-  defp build_shipping_info(row) do
+  defp build_shipping_info(row_tuple) do
     %{
       preferred_type: @default_shipping_type,
-      address: build_shipping_address(row),
+      address: build_shipping_address(row_tuple),
       customer_price: %{
-        amount: parse_float(Enum.at(row, @csv_columns.price)),
-        currency: Enum.at(row, @csv_columns.currency)
+        amount: parse_float(elem(row_tuple, @csv_columns.price)),
+        currency: elem(row_tuple, @csv_columns.currency)
       }
     }
   end
 
-  defp build_shipping_address(row) do
-    recipient_name = Enum.at(row, @csv_columns.recipient_name)
+  defp build_shipping_address(row_tuple) do
+    recipient_name = elem(row_tuple, @csv_columns.recipient_name)
     
     %{
       first_name: extract_first_name(recipient_name),
       last_name: extract_last_name(recipient_name),
-      company: Enum.at(row, @csv_columns.recipient_company),
-      country: normalize_country_code(Enum.at(row, @csv_columns.delivery_country)),
-      state: normalize_state_code(Enum.at(row, @csv_columns.delivery_state)),
-      city: clean_city_name(Enum.at(row, @csv_columns.delivery_city)),
-      street: Enum.at(row, @csv_columns.delivery_address),
-      zip_code: Enum.at(row, @csv_columns.delivery_postal_code)
+      company: elem(row_tuple, @csv_columns.recipient_company),
+      country: normalize_country_code(elem(row_tuple, @csv_columns.delivery_country)),
+      state: normalize_state_code(elem(row_tuple, @csv_columns.delivery_state)),
+      city: clean_city_name(elem(row_tuple, @csv_columns.delivery_city)),
+      street: elem(row_tuple, @csv_columns.delivery_address),
+      zip_code: elem(row_tuple, @csv_columns.delivery_postal_code)
     }
   end
 
-  defp build_billing_address(row) do
-    billing_name = Enum.at(row, @csv_columns.billing_name)
+  defp build_billing_address(row_tuple) do
+    billing_name = elem(row_tuple, @csv_columns.billing_name)
     
     %{
       first_name: extract_first_name(billing_name),
       last_name: extract_last_name(billing_name),
-      company: Enum.at(row, @csv_columns.billing_company),
-      country: normalize_country_code(Enum.at(row, @csv_columns.billing_country)),
-      state: normalize_state_code(Enum.at(row, @csv_columns.billing_state)),
-      city: clean_city_name(Enum.at(row, @csv_columns.billing_city)),
-      street: Enum.at(row, @csv_columns.billing_address),
-      zip_code: Enum.at(row, @csv_columns.billing_postal_code)
+      company: elem(row_tuple, @csv_columns.billing_company),
+      country: normalize_country_code(elem(row_tuple, @csv_columns.billing_country)),
+      state: normalize_state_code(elem(row_tuple, @csv_columns.billing_state)),
+      city: clean_city_name(elem(row_tuple, @csv_columns.billing_city)),
+      street: elem(row_tuple, @csv_columns.billing_address),
+      zip_code: elem(row_tuple, @csv_columns.billing_postal_code)
     }
   end
 

@@ -14,13 +14,15 @@ defmodule SpreadConnectClient.MixProject do
   # Run "mix help compile.app" to learn about applications.
   def application do
     [
-      extra_applications: [:logger]
+      extra_applications: [:logger],
+      mod: {SpreadConnectClient.Application, []}
     ]
   end
 
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
+      {:finch, "~> 0.18"},
       {:jason, "~> 1.4"},
       {:req, "~> 0.5.0"},
       {:nimble_csv, "~> 1.2"},

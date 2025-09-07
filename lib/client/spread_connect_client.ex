@@ -55,7 +55,12 @@ defmodule SpreadConnectClient.Client.SpreadConnectClient do
   defp make_api_request(url, access_token, request_data) do
     Req.post(url,
       headers: [{"X-SPOD-ACCESS-TOKEN", access_token}],
-      json: request_data
+      json: request_data,
+      finch: SpreadConnectClient.Finch,
+      pool_timeout: 5_000,
+      receive_timeout: 30_000,
+      retry: :transient,
+      max_retries: 2
     )
   end
 
